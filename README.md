@@ -25,7 +25,11 @@ Behavior details:
   code span/block are left untouched (no double-linking).
 - A plain click on a ticket link places the cursor so you can immediately edit
   the text. Hold **Ctrl** (or **Cmd** on macOS) and click to open the link,
-  consistent with how other links behave in the editor.
+  consistent with how other links behave in the editor. The "hand" (pointer)
+  cursor over a ticket only appears while the modifier is held.
+- Tickets are also linkified in the **Viewer** (reading mode) and in the
+  split "Editor + Viewer" layout, so they stay clickable after switching modes
+  (e.g. with Ctrl+L).
 
 ## Configuration
 
@@ -73,5 +77,14 @@ Joplin.
   are already inside links, URLs, HTML or code. The decorations are marked as
   atomic ranges, and matches overlapping the selection are left as plain text so
   they remain editable. A plain click on a widget moves the cursor into the
-  ticket for editing, while Ctrl/Cmd-click opens the link.
-- [`src/style.css`](src/style.css:1) styles the rendered links.
+  ticket for editing, while Ctrl/Cmd-click opens the link. A small extension
+  tracks the Ctrl/Cmd key so the pointer cursor only shows while the modifier
+  is held.
+- [`src/markdownItContentScript.ts`](src/markdownItContentScript.ts:1) is the
+  Viewer (Markdown-It) content script. It adds a core rule that replaces ticket
+  identifiers in plain-text tokens with link tokens, skipping tokens that are
+  already inside a link. It reads the settings synchronously via
+  `pluginOptions.settingValue`.
+- [`src/style.css`](src/style.css:1) styles the links in the editor and
+  [`src/markdownItContentScript.css`](src/markdownItContentScript.css:1) styles
+  them in the Viewer.

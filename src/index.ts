@@ -6,6 +6,7 @@ const baseUrlSettingId = 'linkifyTickets.baseUrl';
 const patternSettingId = 'linkifyTickets.pattern';
 
 const contentScriptId = 'linkify-tickets-cm6';
+const markdownItContentScriptId = 'linkify-tickets-markdownit';
 
 const registerSettings = async () => {
 	await joplin.settings.registerSection(sectionName, {
@@ -71,6 +72,14 @@ joplin.plugins.register({
 			ContentScriptType.CodeMirrorPlugin,
 			contentScriptId,
 			'./contentScript.js',
+		);
+
+		// Viewer / reading mode: linkify tickets in the rendered note. This
+		// content script reads the settings directly via pluginOptions.
+		await joplin.contentScripts.register(
+			ContentScriptType.MarkdownItPlugin,
+			markdownItContentScriptId,
+			'./markdownItContentScript.js',
 		);
 
 		await joplin.settings.onChange(async () => {

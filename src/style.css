@@ -3,10 +3,16 @@
 	   for more information about styling with plugins */
 	color: var(--joplin-url-color, #155bd4);
 	text-decoration: underline;
+	/* By default show the text cursor, like the surrounding editor text.
+	   The "hand" (pointer) cursor only appears while Ctrl/Cmd is held, which
+	   matches how regular links behave in the editor. */
+	cursor: text;
+}
+
+.cm-editor.cm-linkify-mod-active .cm-linkify-ticket {
 	cursor: pointer;
 }
 
 .cm-editor .cm-linkify-ticket:hover {
-	text-decoration: underline;
 	opacity: 0.8;
 }

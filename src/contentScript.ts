@@ -159,6 +159,37 @@ const createLinkifyPlugin = (settings: LinkifySettings) => {
 	});
 };
 
+// Toggles a class on the editor while Ctrl/Cmd is held so that the "hand"
+// (pointer) cursor over ticket links only appears with the modifier pressed,
+// matching how regular links behave in the editor.
+const modifierClass = 'cm-linkify-mod-active';
+const modifierTrackingExtension = () => {
+	const setState = (view: EditorView, active: boolean) => {
+		view.dom.classList.toggle(modifierClass, active);
+	};
+
+	return EditorView.domEventHandlers({
+		keydown: (event, view) => {
+			if (event.ctrlKey || event.metaKey) setState(view, true);
+			return false;
+		},
+		keyup: (_event, view) => {
+			// Any key release: re-evaluate on next mousemove/keydown. Simplest is
+			// to clear when the modifier is no longer held.
+			setState(view, false);
+			return false;
+		},
+		mousemove: (event, view) => {
+			setState(view, event.ctrlKey || event.metaKey);
+			return false;
+		},
+		mouseleave: (_event, view) => {
+			setState(view, false);
+			return false;
+		},
+	});
+};
+
 export default (context: { contentScriptId: string, postMessage: any }) => {
 	return {
 		plugin: async (codeMirrorWrapper: any) => {
@@ -178,9 +209,10 @@ export default (context: { contentScriptId: string, postMessage: any }) => {
 				console.error('Linkify tickets: failed to load settings.', error);
 			}
 
-			codeMirrorWrapper.addExtension(
+			codeMirrorWrapper.addExtension([
 				linkifyCompartment.of(createLinkifyPlugin(settings)),
-			);
+				modifierTrackingExtension(),
+			]);
 
 			// Allow the main plugin script to push updated settings.
 			codeMirrorWrapper.registerCommand('linkifyTickets__updateSettings', (newSettings: LinkifySettings) => {

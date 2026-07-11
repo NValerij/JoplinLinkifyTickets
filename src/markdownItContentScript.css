@@ -1,0 +1,10 @@
+/* Styling for ticket links in the rendered note (Viewer). */
+a.linkify-ticket {
+	color: var(--joplin-url-color, #155bd4);
+	text-decoration: underline;
+	cursor: pointer;
+}
+
+a.linkify-ticket:hover {
+	opacity: 0.8;
+}
