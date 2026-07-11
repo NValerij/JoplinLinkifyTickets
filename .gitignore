@@ -1,0 +1,5 @@
+.vscode/
+node-v*/
+dist/
+node_modules/
+publish/
