@@ -1,46 +1,23 @@
+// Editor (CodeMirror 6) content script.
+//
+// Turns ticket references like ABC-123 into clickable link widgets in the
+// Markdown editor. Uses a MatchDecorator, which is the idiomatic CodeMirror way
+// to build regexp-based decorations.
+
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType, MatchDecorator } from '@codemirror/view';
-import { Compartment, RangeSet } from '@codemirror/state';
+import { Compartment } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
+import { LinkifySettings, defaults, buildUrl, buildTicketRegexp } from './common';
 
-interface LinkifySettings {
-	baseUrl: string;
-	pattern: string;
-}
-
-const defaultSettings: LinkifySettings = {
-	baseUrl: 'https://my.site/',
-	pattern: '[A-Z][A-Z0-9]+-[0-9]+',
-};
-
-// Syntax-tree node names inside which a ticket must NOT be linkified. This
-// prevents double-linking tickets that are already part of a Markdown link,
-// an autolink/URL, or code.
+// Syntax-tree node names inside which a ticket must NOT be linkified, to avoid
+// double-linking tickets that are already part of a link, URL or code.
 const skipInsideNodes = new Set<string>([
-	'Link',
-	'Image',
-	'URL',
-	'Autolink',
-	'InlineCode',
-	'CodeText',
-	'FencedCode',
-	'CodeBlock',
-	'Comment',
-	'HTMLTag',
-	'HTMLBlock',
+	'Link', 'Image', 'URL', 'Autolink', 'InlineCode',
+	'CodeText', 'FencedCode', 'CodeBlock', 'Comment', 'HTMLTag', 'HTMLBlock',
 ]);
 
-// Builds the full URL for a given ticket identifier.
-const buildUrl = (baseUrl: string, ticket: string): string => {
-	if (!baseUrl) return ticket;
-	// Avoid producing double slashes when the base URL already ends with "/".
-	if (baseUrl.endsWith('/')) return baseUrl + ticket;
-	return `${baseUrl}/${ticket}`;
-};
-
-// Returns true when the given range is located inside a node where tickets
-// should be left untouched (e.g. an existing Markdown link or code span).
-const isInsideExcludedNode = (view: EditorView, from: number, to: number): boolean => {
-	let node: any = syntaxTree(view.state).resolveInner(from, 1);
+const isInsideExcludedNode = (view: EditorView, pos: number): boolean => {
+	let node: any = syntaxTree(view.state).resolveInner(pos, 1);
 	while (node) {
 		if (skipInsideNodes.has(node.name)) return true;
 		node = node.parent;
@@ -48,7 +25,7 @@ const isInsideExcludedNode = (view: EditorView, from: number, to: number): boole
 	return false;
 };
 
-// Widget that renders a ticket identifier as a clickable anchor element.
+// Renders a ticket identifier as a clickable anchor element.
 class TicketLinkWidget extends WidgetType {
 	public constructor(
 		private readonly ticket: string,
@@ -70,19 +47,15 @@ class TicketLinkWidget extends WidgetType {
 		anchor.className = 'cm-linkify-ticket';
 
 		anchor.addEventListener('mousedown', (event) => {
-			if (event.ctrlKey || event.metaKey) {
-				// Behave like other editor links: open only with the modifier.
-				event.preventDefault();
-				window.open(this.url, '_blank');
-				return;
-			}
-
-			// A plain click should place the cursor on the ticket so the user
-			// can immediately edit the text instead of following the link.
 			event.preventDefault();
-			const pos = this.view.posAtDOM(anchor);
-			this.view.dispatch({ selection: { anchor: pos } });
-			this.view.focus();
+			if (event.ctrlKey || event.metaKey) {
+				// Open only with the modifier, like other editor links.
+				window.open(this.url, '_blank');
+			} else {
+				// A plain click places the cursor so the ticket can be edited.
+				this.view.dispatch({ selection: { anchor: this.view.posAtDOM(anchor) } });
+				this.view.focus();
+			}
 		});
 
 		return anchor;
@@ -93,51 +66,22 @@ class TicketLinkWidget extends WidgetType {
 	}
 }
 
-// Creates a MatchDecorator for the given settings. Matches that overlap the
-// current selection are shown as plain text so the ticket stays editable.
-const createDecorator = (settings: LinkifySettings): MatchDecorator => {
-	// Wrap the pattern in word boundaries so identifiers embedded in the middle
-	// of a longer word (e.g. "xABC-123y") are not matched.
-	const buildRegexp = (pattern: string) => new RegExp(`\\b(?:${pattern})\\b`, 'g');
-
-	let regexp: RegExp;
-	try {
-		regexp = buildRegexp(settings.pattern);
-	} catch (error) {
-		// Fall back to the default pattern if the user entered an invalid one.
-		// eslint-disable-next-line no-console
-		console.error('Linkify tickets: invalid pattern, using default.', error);
-		regexp = buildRegexp(defaultSettings.pattern);
-	}
-
-	return new MatchDecorator({
-		regexp,
+// Builds the ViewPlugin that decorates tickets for the given settings.
+const createLinkifyPlugin = (settings: LinkifySettings) => {
+	const decorator = new MatchDecorator({
+		regexp: buildTicketRegexp(settings.pattern),
 		decorate: (add, from, to, match, view) => {
-			const ticket = match[0];
-
-			// Skip tickets that are already part of a link, URL or code span.
-			if (isInsideExcludedNode(view, from, to)) {
-				return;
-			}
-
-			// If the selection/cursor overlaps this match, keep it editable.
+			// Skip tickets inside links/code, or those the selection touches
+			// (so they stay editable).
+			if (isInsideExcludedNode(view, from)) return;
 			for (const range of view.state.selection.ranges) {
-				if (range.from <= to && range.to >= from) {
-					return;
-				}
+				if (range.from <= to && range.to >= from) return;
 			}
-
-			const url = buildUrl(settings.baseUrl, ticket);
 			add(from, to, Decoration.replace({
-				widget: new TicketLinkWidget(ticket, url, view),
+				widget: new TicketLinkWidget(match[0], buildUrl(settings.baseUrl, match[0]), view),
 			}));
 		},
 	});
-};
-
-// Builds the ViewPlugin that maintains the link decorations.
-const createLinkifyPlugin = (settings: LinkifySettings) => {
-	const decorator = createDecorator(settings);
 
 	return ViewPlugin.fromClass(class {
 		public decorations: DecorationSet;
@@ -153,42 +97,17 @@ const createLinkifyPlugin = (settings: LinkifySettings) => {
 		}
 	}, {
 		decorations: (instance) => instance.decorations,
-		provide: (plugin) => EditorView.atomicRanges.of((view) => {
-			return view.plugin(plugin)?.decorations ?? (RangeSet.empty as RangeSet<Decoration>);
-		}),
 	});
 };
 
-// Toggles a class on the editor while Ctrl/Cmd is held so that the "hand"
-// (pointer) cursor over ticket links only appears with the modifier pressed,
-// matching how regular links behave in the editor.
-const modifierClass = 'cm-linkify-mod-active';
-const modifierTrackingExtension = () => {
-	const setState = (view: EditorView, active: boolean) => {
-		view.dom.classList.toggle(modifierClass, active);
-	};
-
-	return EditorView.domEventHandlers({
-		keydown: (event, view) => {
-			if (event.ctrlKey || event.metaKey) setState(view, true);
-			return false;
-		},
-		keyup: (_event, view) => {
-			// Any key release: re-evaluate on next mousemove/keydown. Simplest is
-			// to clear when the modifier is no longer held.
-			setState(view, false);
-			return false;
-		},
-		mousemove: (event, view) => {
-			setState(view, event.ctrlKey || event.metaKey);
-			return false;
-		},
-		mouseleave: (_event, view) => {
-			setState(view, false);
-			return false;
-		},
-	});
-};
+// Toggles a class on the editor while Ctrl/Cmd is held, so the pointer cursor
+// over ticket links only appears with the modifier pressed (like real links).
+const modifierTracking = EditorView.domEventHandlers({
+	keydown: (event, view) => { view.dom.classList.toggle('cm-linkify-mod-active', event.ctrlKey || event.metaKey); return false; },
+	keyup: (_event, view) => { view.dom.classList.remove('cm-linkify-mod-active'); return false; },
+	mousemove: (event, view) => { view.dom.classList.toggle('cm-linkify-mod-active', event.ctrlKey || event.metaKey); return false; },
+	mouseleave: (_event, view) => { view.dom.classList.remove('cm-linkify-mod-active'); return false; },
+});
 
 export default (context: { contentScriptId: string, postMessage: any }) => {
 	return {
@@ -196,29 +115,25 @@ export default (context: { contentScriptId: string, postMessage: any }) => {
 			// This content script only targets the CodeMirror 6 editor.
 			if (!codeMirrorWrapper.cm6) return;
 
-			// A compartment lets us reconfigure the linkify plugin when the
-			// settings change, without recreating the whole editor.
-			const linkifyCompartment = new Compartment();
+			// A compartment lets us reconfigure the plugin when settings change.
+			const compartment = new Compartment();
 
-			let settings: LinkifySettings = defaultSettings;
+			let settings: LinkifySettings = defaults;
 			try {
-				const received = await context.postMessage('getSettings');
-				if (received) settings = received;
+				settings = (await context.postMessage('getSettings')) || defaults;
 			} catch (error) {
 				// eslint-disable-next-line no-console
 				console.error('Linkify tickets: failed to load settings.', error);
 			}
 
 			codeMirrorWrapper.addExtension([
-				linkifyCompartment.of(createLinkifyPlugin(settings)),
-				modifierTrackingExtension(),
+				compartment.of(createLinkifyPlugin(settings)),
+				modifierTracking,
 			]);
 
-			// Allow the main plugin script to push updated settings.
 			codeMirrorWrapper.registerCommand('linkifyTickets__updateSettings', (newSettings: LinkifySettings) => {
-				const applied = newSettings || settings;
 				codeMirrorWrapper.editor.dispatch({
-					effects: [linkifyCompartment.reconfigure(createLinkifyPlugin(applied))],
+					effects: [compartment.reconfigure(createLinkifyPlugin(newSettings || settings))],
 				});
 			});
 		},

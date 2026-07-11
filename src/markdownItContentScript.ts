@@ -5,116 +5,75 @@
 // read synchronously through `pluginOptions.settingValue`, which is provided to
 // Markdown-It content scripts by Joplin.
 
-const baseUrlSettingId = 'linkifyTickets.baseUrl';
-const patternSettingId = 'linkifyTickets.pattern';
-
-const defaultBaseUrl = 'https://my.site/';
-const defaultPattern = '[A-Z][A-Z0-9]+-[0-9]+';
-
-const buildUrl = (baseUrl: string, ticket: string): string => {
-	if (!baseUrl) return ticket;
-	if (baseUrl.endsWith('/')) return baseUrl + ticket;
-	return `${baseUrl}/${ticket}`;
-};
+import { settingIds, defaults, buildUrl, buildTicketRegexp } from './common';
 
 export default (_context: { contentScriptId: string }) => {
 	return {
 		plugin: (markdownIt: any, pluginOptions: any) => {
 			const readSetting = (key: string, fallback: string): string => {
 				try {
-					const value = pluginOptions ? pluginOptions.settingValue(key) : undefined;
-					return (value === undefined || value === null || value === '') ? fallback : value;
+					const value = pluginOptions?.settingValue(key);
+					return value ? value : fallback;
 				} catch (error) {
 					return fallback;
 				}
 			};
 
-			const buildRegexp = (): RegExp => {
-				const pattern = readSetting(patternSettingId, defaultPattern);
-				try {
-					return new RegExp(`\\b(?:${pattern})\\b`, 'g');
-				} catch (error) {
-					return new RegExp(`\\b(?:${defaultPattern})\\b`, 'g');
-				}
-			};
-
 			// Splits a plain-text token into a mix of text and ticket-link tokens.
+			// Returns null when there is nothing to linkify.
 			const splitTextToken = (token: any, regexp: RegExp, baseUrl: string): any[] | null => {
 				const text: string = token.content;
-				regexp.lastIndex = 0;
-
+				const Token = token.constructor;
 				const nodes: any[] = [];
 				let lastIndex = 0;
+				regexp.lastIndex = 0;
+
+				const addText = (content: string) => {
+					if (!content) return;
+					const node = new Token('text', '', 0);
+					node.content = content;
+					nodes.push(node);
+				};
+
 				let match: RegExpExecArray | null;
-				let found = false;
-
 				while ((match = regexp.exec(text)) !== null) {
-					found = true;
 					const ticket = match[0];
-					const start = match.index;
-					const end = start + ticket.length;
+					addText(text.slice(lastIndex, match.index));
 
-					if (start > lastIndex) {
-						const textNode = new (token.constructor)('text', '', 0);
-						textNode.content = text.slice(lastIndex, start);
-						nodes.push(textNode);
-					}
+					const open = new Token('link_open', 'a', 1);
+					open.attrSet('href', buildUrl(baseUrl, ticket));
+					open.attrSet('class', 'linkify-ticket');
+					nodes.push(open);
+					addText(ticket);
+					nodes.push(new Token('link_close', 'a', -1));
 
-					const url = buildUrl(baseUrl, ticket);
-
-					const linkOpen = new (token.constructor)('link_open', 'a', 1);
-					linkOpen.attrSet('href', url);
-					linkOpen.attrSet('class', 'linkify-ticket');
-					nodes.push(linkOpen);
-
-					const linkText = new (token.constructor)('text', '', 0);
-					linkText.content = ticket;
-					nodes.push(linkText);
-
-					const linkClose = new (token.constructor)('link_close', 'a', -1);
-					nodes.push(linkClose);
-
-					lastIndex = end;
+					lastIndex = match.index + ticket.length;
 				}
 
-				if (!found) return null;
-
-				if (lastIndex < text.length) {
-					const textNode = new (token.constructor)('text', '', 0);
-					textNode.content = text.slice(lastIndex);
-					nodes.push(textNode);
-				}
-
+				if (!nodes.length) return null;
+				addText(text.slice(lastIndex));
 				return nodes;
 			};
 
 			// Core rule: walk every inline token's children, replacing tickets in
-			// plain-text nodes. Nodes inside existing links or code are skipped.
+			// plain-text nodes. Text inside existing links is skipped.
 			markdownIt.core.ruler.push('linkify_tickets', (state: any) => {
-				const baseUrl = readSetting(baseUrlSettingId, defaultBaseUrl);
-				const regexp = buildRegexp();
+				const baseUrl = readSetting(settingIds.baseUrl, defaults.baseUrl);
+				const regexp = buildTicketRegexp(readSetting(settingIds.pattern, defaults.pattern));
 
 				for (const blockToken of state.tokens) {
 					if (blockToken.type !== 'inline' || !blockToken.children) continue;
 
-					const children = blockToken.children;
 					const newChildren: any[] = [];
 					let linkDepth = 0;
 
-					for (const child of children) {
+					for (const child of blockToken.children) {
 						if (child.type === 'link_open') linkDepth++;
 
-						const canLinkify = child.type === 'text' && linkDepth === 0;
-						if (canLinkify) {
-							const replacement = splitTextToken(child, regexp, baseUrl);
-							if (replacement) {
-								newChildren.push(...replacement);
-							} else {
-								newChildren.push(child);
-							}
-						} else {
-							newChildren.push(child);
-						}
+						const replacement = (child.type === 'text' && linkDepth === 0)
+							? splitTextToken(child, regexp, baseUrl)
+							: null;
+						newChildren.push(...(replacement ?? [child]));
 
 						if (child.type === 'link_close' && linkDepth > 0) linkDepth--;
 					}

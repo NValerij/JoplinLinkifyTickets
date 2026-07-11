@@ -1,9 +1,8 @@
 import joplin from 'api';
 import { ContentScriptType, SettingItemType } from 'api/types';
+import { settingIds, defaults, LinkifySettings } from './common';
 
 const sectionName = 'linkifyTicketsSection';
-const baseUrlSettingId = 'linkifyTickets.baseUrl';
-const patternSettingId = 'linkifyTickets.pattern';
 
 const contentScriptId = 'linkify-tickets-cm6';
 const markdownItContentScriptId = 'linkify-tickets-markdownit';
@@ -16,17 +15,17 @@ const registerSettings = async () => {
 	});
 
 	await joplin.settings.registerSettings({
-		[baseUrlSettingId]: {
+		[settingIds.baseUrl]: {
 			section: sectionName,
-			value: 'https://my.site/',
+			value: defaults.baseUrl,
 			public: true,
 			type: SettingItemType.String,
 			label: 'Base URL',
 			description: 'The ticket identifier is appended to this URL. Example: with "https://my.site/" the ticket "ABC-123" links to "https://my.site/ABC-123".',
 		},
-		[patternSettingId]: {
+		[settingIds.pattern]: {
 			section: sectionName,
-			value: '[A-Z][A-Z0-9]+-[0-9]+',
+			value: defaults.pattern,
 			public: true,
 			advanced: true,
 			type: SettingItemType.String,
@@ -36,10 +35,10 @@ const registerSettings = async () => {
 	});
 };
 
-const getSettings = async () => {
+const getSettings = async (): Promise<LinkifySettings> => {
 	return {
-		baseUrl: (await joplin.settings.value(baseUrlSettingId)) as string,
-		pattern: (await joplin.settings.value(patternSettingId)) as string,
+		baseUrl: (await joplin.settings.value(settingIds.baseUrl)) as string,
+		pattern: (await joplin.settings.value(settingIds.pattern)) as string,
 	};
 };
 
