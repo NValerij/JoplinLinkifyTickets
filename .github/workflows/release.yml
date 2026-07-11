@@ -1,0 +1,50 @@
+name: Release
+
+# Publishes a GitHub Release with the built .jpl whenever a version tag is
+# pushed (e.g. `git tag v1.1.1 && git push origin v1.1.1`).
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the plugin
+        run: npm run dist
+
+      - name: Verify tag matches manifest version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          MANIFEST=$(node -p "require('./src/manifest.json').version")
+          echo "Tag version:      $TAG"
+          echo "Manifest version: $MANIFEST"
+          if [ "$TAG" != "$MANIFEST" ]; then
+            echo "::error::Tag ($TAG) does not match src/manifest.json version ($MANIFEST)."
+            exit 1
+          fi
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Linkify tickets ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: |
+            publish/*.jpl
+            publish/*.json

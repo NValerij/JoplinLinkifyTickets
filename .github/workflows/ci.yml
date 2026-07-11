@@ -1,0 +1,36 @@
+name: CI
+
+# Builds the plugin on every push and pull request to make sure it always
+# compiles and produces a .jpl archive.
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the plugin
+        run: npm run dist
+
+      - name: Upload the built plugin as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin
+          path: publish/*.jpl
+          if-no-files-found: error

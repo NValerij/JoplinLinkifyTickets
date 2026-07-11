@@ -135,6 +135,41 @@ script to reload.
 
 ---
 
+## Releasing
+
+Releases are automated with GitHub Actions (see `.github/workflows/`):
+
+- **`ci.yml`** runs on every push to `main`/`master` and on every pull request.
+  It installs dependencies, builds the plugin, and uploads the resulting `.jpl`
+  as a build artifact — so a broken build is caught before it is tagged.
+- **`release.yml`** runs when a version tag (`v*`) is pushed. It builds the
+  plugin, checks that the tag matches the version in `src/manifest.json`, and
+  publishes a GitHub Release with the `.jpl` and the plugin info `.json`
+  attached (release notes are generated automatically).
+
+To cut a release:
+
+```bash
+# 1. Bump the version in package.json and src/manifest.json (keep them in sync).
+npm run updateVersion   # or edit both files by hand
+
+# 2. Commit the version bump.
+git commit -am "Release v1.1.1"
+
+# 3. Tag with a matching "v" prefix and push the tag.
+git tag v1.1.1
+git push origin main --tags
+```
+
+GitHub Actions then builds and publishes the release automatically. No secrets
+need to be configured — the workflow uses the built-in `GITHUB_TOKEN`.
+
+To list the plugin on the official Joplin plugin marketplace, submit it to the
+[`joplin/plugins`](https://github.com/joplin/plugins) repository separately; the
+GitHub Release above is enough for manual installation of the `.jpl`.
+
+---
+
 ## Project structure & development notes
 
 *This section is for people working on the plugin itself; you don't need it to
