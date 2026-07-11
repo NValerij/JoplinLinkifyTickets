@@ -1,34 +1,45 @@
 // Editor (CodeMirror 6) content script.
 //
 // Turns ticket references like ABC-123 into clickable link widgets in the
-// Markdown editor. Uses a MatchDecorator, which is the idiomatic CodeMirror way
-// to build regexp-based decorations.
+// Markdown editor. It also shortens full ticket URLs (e.g.
+// "https://my.site/ABC-123") down to the identifier, adding a comment emoji
+// when the URL points to a specific comment ("#hash"). Uses a MatchDecorator,
+// which is the idiomatic CodeMirror way to build regexp-based decorations.
 
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType, MatchDecorator } from '@codemirror/view';
 import { Compartment } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
-import { LinkifySettings, defaults, buildUrl, buildTicketRegexp } from './common';
+import { LinkifySettings, defaults, buildMatchRegexp, interpretMatch, displayLabel } from './common';
 
-// Syntax-tree node names inside which a ticket must NOT be linkified, to avoid
-// double-linking tickets that are already part of a link, URL or code.
+// Syntax-tree node names inside which a *bare* ticket must NOT be linkified, to
+// avoid double-linking tickets that are already part of a link, URL or code.
 const skipInsideNodes = new Set<string>([
 	'Link', 'Image', 'URL', 'Autolink', 'InlineCode',
 	'CodeText', 'FencedCode', 'CodeBlock', 'Comment', 'HTMLTag', 'HTMLBlock',
 ]);
 
-const isInsideExcludedNode = (view: EditorView, pos: number): boolean => {
+// For a full ticket *URL* match we still want to collapse it even though the URL
+// itself is recognised as a `URL`/`Autolink` node. We only skip it when it is
+// the href of a Markdown link/image or when it lives inside code/HTML.
+const skipUrlInsideNodes = new Set<string>([
+	'Link', 'Image', 'InlineCode',
+	'CodeText', 'FencedCode', 'CodeBlock', 'Comment', 'HTMLTag', 'HTMLBlock',
+]);
+
+const isInsideExcludedNode = (view: EditorView, pos: number, skip: Set<string>): boolean => {
 	let node: any = syntaxTree(view.state).resolveInner(pos, 1);
 	while (node) {
-		if (skipInsideNodes.has(node.name)) return true;
+		if (skip.has(node.name)) return true;
 		node = node.parent;
 	}
 	return false;
 };
 
-// Renders a ticket identifier as a clickable anchor element.
+// Renders a ticket reference as a clickable anchor element. `label` is the
+// shortened text shown to the user; `url` is where the link points.
 class TicketLinkWidget extends WidgetType {
 	public constructor(
-		private readonly ticket: string,
+		private readonly label: string,
 		private readonly url: string,
 		private readonly view: EditorView,
 	) {
@@ -36,12 +47,12 @@ class TicketLinkWidget extends WidgetType {
 	}
 
 	public eq(other: TicketLinkWidget) {
-		return other.ticket === this.ticket && other.url === this.url;
+		return other.label === this.label && other.url === this.url;
 	}
 
 	public toDOM() {
 		const anchor = document.createElement('a');
-		anchor.textContent = this.ticket;
+		anchor.textContent = this.label;
 		anchor.href = this.url;
 		anchor.title = `${this.url}\n(Ctrl/Cmd + click to open)`;
 		anchor.className = 'cm-linkify-ticket';
@@ -69,16 +80,19 @@ class TicketLinkWidget extends WidgetType {
 // Builds the ViewPlugin that decorates tickets for the given settings.
 const createLinkifyPlugin = (settings: LinkifySettings) => {
 	const decorator = new MatchDecorator({
-		regexp: buildTicketRegexp(settings.pattern),
+		regexp: buildMatchRegexp(settings),
 		decorate: (add, from, to, match, view) => {
-			// Skip tickets inside links/code, or those the selection touches
-			// (so they stay editable).
-			if (isInsideExcludedNode(view, from)) return;
+			const interpreted = interpretMatch(match, settings);
+			// Bare tickets are skipped inside any link/URL/code node; full ticket
+			// URLs are still collapsed even though the URL is its own node.
+			const skip = interpreted.isUrl ? skipUrlInsideNodes : skipInsideNodes;
+			if (isInsideExcludedNode(view, from, skip)) return;
+			// Skip matches the selection touches, so they stay editable.
 			for (const range of view.state.selection.ranges) {
 				if (range.from <= to && range.to >= from) return;
 			}
 			add(from, to, Decoration.replace({
-				widget: new TicketLinkWidget(match[0], buildUrl(settings.baseUrl, match[0]), view),
+				widget: new TicketLinkWidget(displayLabel(interpreted, settings), interpreted.url, view),
 			}));
 		},
 	});

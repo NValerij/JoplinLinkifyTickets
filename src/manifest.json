@@ -2,7 +2,7 @@
 	"manifest_version": 1,
 	"id": "com.joplin.valerij-n.linkifytickets",
 	"app_min_version": "3.6",
-	"version": "1.0.0",
+	"version": "1.1.1",
 	"name": "Linkify tickets",
 	"description": "Add link to ticket numbers like ABC-123. Base URL can be configured.",
 	"author": "Valeriy Novitskiy",

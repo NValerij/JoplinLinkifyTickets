@@ -32,6 +32,14 @@ const registerSettings = async () => {
 			label: 'Ticket pattern (regular expression)',
 			description: 'A JavaScript regular expression that matches ticket identifiers. Default matches identifiers like ABC-123.',
 		},
+		[settingIds.commentEmoji]: {
+			section: sectionName,
+			value: defaults.commentEmoji,
+			public: true,
+			type: SettingItemType.String,
+			label: 'Comment emoji',
+			description: 'Appended to the shortened label when a ticket URL points to a specific comment (i.e. has a "#hash" fragment). Example: "ABC-123 💬".',
+		},
 	});
 };
 
@@ -39,6 +47,7 @@ const getSettings = async (): Promise<LinkifySettings> => {
 	return {
 		baseUrl: (await joplin.settings.value(settingIds.baseUrl)) as string,
 		pattern: (await joplin.settings.value(settingIds.pattern)) as string,
+		commentEmoji: (await joplin.settings.value(settingIds.commentEmoji)) as string,
 	};
 };
 
