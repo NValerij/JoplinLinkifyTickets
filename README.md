@@ -17,6 +17,16 @@ The link is rendered as a widget while you are not editing that particular
 ticket. As soon as the cursor/selection touches the ticket, it turns back into
 plain, editable text.
 
+Behavior details:
+
+- Ticket identifiers are matched only on word boundaries, so text embedded in a
+  longer word (e.g. `xABC-123y`) is not turned into a link.
+- Tickets that are already part of a Markdown link, an autolink/URL, HTML or a
+  code span/block are left untouched (no double-linking).
+- A plain click on a ticket link places the cursor so you can immediately edit
+  the text. Hold **Ctrl** (or **Cmd** on macOS) and click to open the link,
+  consistent with how other links behave in the editor.
+
 ## Configuration
 
 Open **Options → Linkify tickets** to configure:
@@ -57,8 +67,11 @@ Joplin.
   pushes updated settings to the editor via an editor command when the settings
   change.
 - [`src/contentScript.ts`](src/contentScript.ts:1) is the CodeMirror 6 content
-  script. It uses a `MatchDecorator` to find ticket identifiers and replaces
-  each with a widget that renders an anchor element. The decorations are marked
-  as atomic ranges, and matches overlapping the selection are left as plain text
-  so they remain editable.
+  script. It uses a `MatchDecorator` (with the pattern wrapped in `\b` word
+  boundaries) to find ticket identifiers and replaces each with a widget that
+  renders an anchor element. The syntax tree is consulted to skip tickets that
+  are already inside links, URLs, HTML or code. The decorations are marked as
+  atomic ranges, and matches overlapping the selection are left as plain text so
+  they remain editable. A plain click on a widget moves the cursor into the
+  ticket for editing, while Ctrl/Cmd-click opens the link.
 - [`src/style.css`](src/style.css:1) styles the rendered links.

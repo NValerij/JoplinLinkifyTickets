@@ -1,5 +1,6 @@
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType, MatchDecorator } from '@codemirror/view';
 import { Compartment, RangeSet } from '@codemirror/state';
+import { syntaxTree } from '@codemirror/language';
 
 interface LinkifySettings {
 	baseUrl: string;
@@ -11,6 +12,23 @@ const defaultSettings: LinkifySettings = {
 	pattern: '[A-Z][A-Z0-9]+-[0-9]+',
 };
 
+// Syntax-tree node names inside which a ticket must NOT be linkified. This
+// prevents double-linking tickets that are already part of a Markdown link,
+// an autolink/URL, or code.
+const skipInsideNodes = new Set<string>([
+	'Link',
+	'Image',
+	'URL',
+	'Autolink',
+	'InlineCode',
+	'CodeText',
+	'FencedCode',
+	'CodeBlock',
+	'Comment',
+	'HTMLTag',
+	'HTMLBlock',
+]);
+
 // Builds the full URL for a given ticket identifier.
 const buildUrl = (baseUrl: string, ticket: string): string => {
 	if (!baseUrl) return ticket;
@@ -19,9 +37,24 @@ const buildUrl = (baseUrl: string, ticket: string): string => {
 	return `${baseUrl}/${ticket}`;
 };
 
+// Returns true when the given range is located inside a node where tickets
+// should be left untouched (e.g. an existing Markdown link or code span).
+const isInsideExcludedNode = (view: EditorView, from: number, to: number): boolean => {
+	let node: any = syntaxTree(view.state).resolveInner(from, 1);
+	while (node) {
+		if (skipInsideNodes.has(node.name)) return true;
+		node = node.parent;
+	}
+	return false;
+};
+
 // Widget that renders a ticket identifier as a clickable anchor element.
 class TicketLinkWidget extends WidgetType {
-	public constructor(private readonly ticket: string, private readonly url: string) {
+	public constructor(
+		private readonly ticket: string,
+		private readonly url: string,
+		private readonly view: EditorView,
+	) {
 		super();
 	}
 
@@ -33,13 +66,25 @@ class TicketLinkWidget extends WidgetType {
 		const anchor = document.createElement('a');
 		anchor.textContent = this.ticket;
 		anchor.href = this.url;
-		anchor.title = this.url;
+		anchor.title = `${this.url}\n(Ctrl/Cmd + click to open)`;
 		anchor.className = 'cm-linkify-ticket';
+
 		anchor.addEventListener('mousedown', (event) => {
-			// Open the link externally instead of navigating the editor webview.
+			if (event.ctrlKey || event.metaKey) {
+				// Behave like other editor links: open only with the modifier.
+				event.preventDefault();
+				window.open(this.url, '_blank');
+				return;
+			}
+
+			// A plain click should place the cursor on the ticket so the user
+			// can immediately edit the text instead of following the link.
 			event.preventDefault();
-			window.open(this.url, '_blank');
+			const pos = this.view.posAtDOM(anchor);
+			this.view.dispatch({ selection: { anchor: pos } });
+			this.view.focus();
 		});
+
 		return anchor;
 	}
 
@@ -51,20 +96,29 @@ class TicketLinkWidget extends WidgetType {
 // Creates a MatchDecorator for the given settings. Matches that overlap the
 // current selection are shown as plain text so the ticket stays editable.
 const createDecorator = (settings: LinkifySettings): MatchDecorator => {
+	// Wrap the pattern in word boundaries so identifiers embedded in the middle
+	// of a longer word (e.g. "xABC-123y") are not matched.
+	const buildRegexp = (pattern: string) => new RegExp(`\\b(?:${pattern})\\b`, 'g');
+
 	let regexp: RegExp;
 	try {
-		regexp = new RegExp(settings.pattern, 'g');
+		regexp = buildRegexp(settings.pattern);
 	} catch (error) {
 		// Fall back to the default pattern if the user entered an invalid one.
 		// eslint-disable-next-line no-console
 		console.error('Linkify tickets: invalid pattern, using default.', error);
-		regexp = new RegExp(defaultSettings.pattern, 'g');
+		regexp = buildRegexp(defaultSettings.pattern);
 	}
 
 	return new MatchDecorator({
 		regexp,
 		decorate: (add, from, to, match, view) => {
 			const ticket = match[0];
+
+			// Skip tickets that are already part of a link, URL or code span.
+			if (isInsideExcludedNode(view, from, to)) {
+				return;
+			}
 
 			// If the selection/cursor overlaps this match, keep it editable.
 			for (const range of view.state.selection.ranges) {
@@ -75,7 +129,7 @@ const createDecorator = (settings: LinkifySettings): MatchDecorator => {
 
 			const url = buildUrl(settings.baseUrl, ticket);
 			add(from, to, Decoration.replace({
-				widget: new TicketLinkWidget(ticket, url),
+				widget: new TicketLinkWidget(ticket, url, view),
 			}));
 		},
 	});

@@ -15,6 +15,7 @@
     "publish"
   ],
   "devDependencies": {
+    "@codemirror/language": "^6.12.4",
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.6",
     "@types/node": "^18.7.13",
