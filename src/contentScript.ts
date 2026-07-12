@@ -77,8 +77,12 @@ class TicketLinkWidget extends WidgetType {
 	}
 }
 
-// Builds the ViewPlugin that decorates tickets for the given settings.
+// Builds the ViewPlugin that decorates tickets for the given settings. When the
+// settings disable the plugin for the current note (tag filter), it returns an
+// empty extension so nothing is linkified.
 const createLinkifyPlugin = (settings: LinkifySettings) => {
+	if (settings.enabled === false) return [];
+
 	const decorator = new MatchDecorator({
 		regexp: buildMatchRegexp(settings),
 		decorate: (add, from, to, match, view) => {

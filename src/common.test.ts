@@ -8,6 +8,8 @@ import {
 	interpretMatch,
 	parseTicketUrl,
 	displayLabel,
+	parseTagFilter,
+	noteMatchesTagFilter,
 	TicketMatch,
 } from './common';
 
@@ -16,6 +18,7 @@ const makeSettings = (overrides: Partial<LinkifySettings> = {}): LinkifySettings
 	baseUrl: defaults.baseUrl,
 	pattern: defaults.pattern,
 	commentEmoji: defaults.commentEmoji,
+	enabled: defaults.enabled,
 	...overrides,
 });
 
@@ -219,5 +222,48 @@ describe('issue/1234 style references (GitHub/GitLab)', () => {
 		const parsed = parseTicketUrl('https://jira.example.com/browse/ABC-123', settings)!;
 		expect(parsed.ticket).toBe('ABC-123');
 		expect(displayLabel(parsed, settings)).toBe('ABC-123');
+	});
+});
+
+describe('parseTagFilter', () => {
+	it('returns an empty list for an empty filter', () => {
+		expect(parseTagFilter('')).toEqual([]);
+	});
+
+	it('splits, trims and lower-cases comma-separated tags', () => {
+		expect(parseTagFilter(' Work , Tickets ')).toEqual(['work', 'tickets']);
+	});
+
+	it('drops empty entries produced by stray commas', () => {
+		expect(parseTagFilter('work,,  ,tickets,')).toEqual(['work', 'tickets']);
+	});
+});
+
+describe('noteMatchesTagFilter', () => {
+	it('runs everywhere when the filter is empty', () => {
+		expect(noteMatchesTagFilter('', [])).toBe(true);
+		expect(noteMatchesTagFilter('', ['anything'])).toBe(true);
+	});
+
+	it('runs everywhere when the filter is only whitespace/commas', () => {
+		expect(noteMatchesTagFilter('  ,  ', ['whatever'])).toBe(true);
+	});
+
+	it('matches when the note carries the required tag (case-insensitive)', () => {
+		expect(noteMatchesTagFilter('work', ['Work'])).toBe(true);
+		expect(noteMatchesTagFilter('Work', ['work', 'other'])).toBe(true);
+	});
+
+	it('matches when the note carries any one of several required tags', () => {
+		expect(noteMatchesTagFilter('work, tickets', ['tickets'])).toBe(true);
+	});
+
+	it('does not match when the note carries none of the required tags', () => {
+		expect(noteMatchesTagFilter('work, tickets', ['personal'])).toBe(false);
+		expect(noteMatchesTagFilter('work', [])).toBe(false);
+	});
+
+	it('ignores surrounding whitespace on the note tag titles', () => {
+		expect(noteMatchesTagFilter('work', [' Work '])).toBe(true);
 	});
 });

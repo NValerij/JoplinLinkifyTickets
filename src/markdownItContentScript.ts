@@ -27,10 +27,22 @@ export default (_context: { contentScriptId: string }) => {
 				}
 			};
 
+			// The internal `active` flag is recomputed by the main process for the
+			// current note (based on the tag filter). Default to active.
+			const isActive = (): boolean => {
+				try {
+					const value = pluginOptions?.settingValue(settingIds.active);
+					return value === undefined ? true : !!value;
+				} catch (error) {
+					return true;
+				}
+			};
+
 			const getSettings = (): LinkifySettings => ({
 				baseUrl: readSetting(settingIds.baseUrl, defaults.baseUrl),
 				pattern: readSetting(settingIds.pattern, defaults.pattern),
 				commentEmoji: readSetting(settingIds.commentEmoji, defaults.commentEmoji),
+				enabled: isActive(),
 			});
 
 			// Splits a plain-text token into text and ticket-link tokens (handling
@@ -73,6 +85,8 @@ export default (_context: { contentScriptId: string }) => {
 			// Core rule: walk every inline token's children.
 			markdownIt.core.ruler.push('linkify_tickets', (state: any) => {
 				const settings = getSettings();
+				// Skipped on notes that do not match the configured tag filter.
+				if (!settings.enabled) return true;
 				const regexp = buildMatchRegexp(settings);
 
 				for (const blockToken of state.tokens) {

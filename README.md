@@ -74,12 +74,28 @@ Open **Options → Linkify tickets** and adjust:
 - **Comment emoji** — appended to the label when a link points to a specific
   comment (its URL has a `#hash` fragment). Default: 💬. Set it to any string,
   or clear it to disable the marker.
+- **Only on notes tagged** *(optional)* — restrict the plugin to notes carrying
+  a given tag. Leave it empty (the default) to run on every note. Enter a tag
+  title, or several separated by commas (a note needs *any one* of them).
+  Matching is case-insensitive.
 - **Ticket pattern** *(advanced)* — a JavaScript regular expression describing
   what a ticket key looks like. Default: `[A-Z][A-Z0-9]+-[0-9]+` (e.g.
   `ABC-123`, `PROJ2-45`). An invalid pattern falls back to the default.
 
-Editor links update immediately when you change a setting. Viewer changes take
-effect on the next render — open another note and come back, or restart Joplin.
+Editor links update immediately when you change a setting or switch notes.
+Viewer changes take effect on the next render — open another note and come back,
+or restart Joplin.
+
+#### When you add or remove the required tag
+
+- **Editor (Markdown mode):** the plugin turns on/off automatically, within
+  about 2 seconds. Joplin does not notify plugins when a tag is added to or
+  removed from a note, so the plugin polls the current note's tags — the ~2 s
+  delay is by design.
+- **Viewer (reading mode):** the reading pane caches its rendered output and
+  Joplin provides no way for a plugin to force it to re-render. After changing
+  the tag, switch to any other note and back to make the viewer pick up the
+  change.
 
 ### Configuring for a specific tracker
 

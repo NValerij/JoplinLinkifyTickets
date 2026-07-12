@@ -5,6 +5,12 @@ export const settingIds = {
 	baseUrl: 'linkifyTickets.baseUrl',
 	pattern: 'linkifyTickets.pattern',
 	commentEmoji: 'linkifyTickets.commentEmoji',
+	// A comma-separated list of tag titles. When non-empty, the plugin only runs
+	// on notes carrying at least one of these tags.
+	requiredTag: 'linkifyTickets.requiredTag',
+	// Internal (non-public) flag recomputed by the main process for the current
+	// note, so the Viewer content script can read it synchronously.
+	active: 'linkifyTickets.active',
 };
 
 export const defaults = {
@@ -13,13 +19,40 @@ export const defaults = {
 	// Speech balloon 💬 — appended to the label when a ticket URL points to a
 	// specific comment (i.e. it has a "#hash" fragment).
 	commentEmoji: '💬',
+	// Empty means "run everywhere" (the original behavior).
+	requiredTag: '',
+	// Default to running; the main process narrows this per note.
+	enabled: true,
 };
 
 export interface LinkifySettings {
 	baseUrl: string;
 	pattern: string;
 	commentEmoji: string;
+	// Whether the plugin should run on the current note (computed from the
+	// requiredTag setting and the note's tags). Defaults to true.
+	enabled: boolean;
 }
+
+// Splits a comma-separated tag filter into a list of trimmed, non-empty,
+// lower-cased tag titles.
+export const parseTagFilter = (requiredTag: string): string[] => {
+	if (!requiredTag) return [];
+	return requiredTag
+		.split(',')
+		.map((tag) => tag.trim().toLowerCase())
+		.filter((tag) => tag.length > 0);
+};
+
+// Decides whether the plugin should run on a note, given the configured tag
+// filter and the titles of the tags attached to the note. An empty filter means
+// "run everywhere"; otherwise the note must carry at least one of the tags.
+export const noteMatchesTagFilter = (requiredTag: string, noteTagTitles: string[]): boolean => {
+	const wanted = parseTagFilter(requiredTag);
+	if (wanted.length === 0) return true;
+	const have = new Set(noteTagTitles.map((title) => title.trim().toLowerCase()));
+	return wanted.some((tag) => have.has(tag));
+};
 
 // Result of interpreting a single regexp match.
 export interface TicketMatch {
