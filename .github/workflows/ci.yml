@@ -1,7 +1,7 @@
 name: CI
 
-# Builds the plugin on every push and pull request to make sure it always
-# compiles and produces a .jpl archive.
+# Runs unit tests and builds the plugin on every push and pull request, so a
+# broken build or a failing test is caught before it is tagged for release.
 on:
   push:
     branches:
@@ -10,7 +10,26 @@ on:
   pull_request:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository

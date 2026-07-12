@@ -81,6 +81,27 @@ Open **Options → Linkify tickets** and adjust:
 Editor links update immediately when you change a setting. Viewer changes take
 effect on the next render — open another note and come back, or restart Joplin.
 
+### Configuring for a specific tracker
+
+Combine **Base URL** + **Ticket pattern** to match your tracker's URLs:
+
+| Tracker            | Base URL                                | Ticket pattern         | Matches               |
+| ------------------ | --------------------------------------- | ---------------------- | --------------------- |
+| Jira               | `https://jira.example.com/browse/`      | `[A-Z][A-Z0-9]+-[0-9]+` | `ABC-123`             |
+| YouTrack           | `https://youtrack.example.com/issue/`   | `[A-Z][A-Z0-9]+-[0-9]+` | `ABC-123`             |
+| GitHub / GitLab    | `https://github.com/org/repo/`          | `issues?/[0-9]+`       | `issue/1234`          |
+| Redmine            | `https://redmine.example.com/issues/`   | `[0-9]+`               | `1234`                |
+
+**Does `issue/1234` work?** Yes — the ticket pattern is a full regular
+expression, so it can contain a `/`. With base URL `https://github.com/org/repo/`
+and pattern `issues?/[0-9]+`, both the bare `issue/1234` in your notes and the
+full URL `https://github.com/org/repo/issues/1234` are recognised, and the
+displayed label is the whole token (e.g. `issue/1234`). If instead you want a
+pasted GitHub URL to shorten all the way down to just `1234`, put the
+`issues/` segment in the **Base URL** (`https://github.com/org/repo/issues/`)
+and use pattern `[0-9]+` — but note that a bare `[0-9]+` then matches *any*
+number in your prose, so that style is best when you mostly paste full URLs.
+
 ---
 
 ## Building locally
@@ -135,13 +156,40 @@ script to reload.
 
 ---
 
+## Testing
+
+Unit tests cover the matching/shortening logic in `src/common.ts` (the single
+source of truth shared by the editor and Viewer), including **every link format
+in the table above** and the tracker-specific patterns below. They run with
+[Jest](https://jestjs.io/) via `ts-jest`, so no separate compile step is needed:
+
+```bash
+npm test
+```
+
+Tests live next to the code they cover as `src/*.test.ts` (e.g.
+[`src/common.test.ts`](src/common.test.ts)). Because `.npmignore` excludes
+`src/` and webpack only bundles the declared entry points, test files never end
+up in the published plugin.
+
+The tests run automatically in two more places:
+
+- **Pre-commit hook** — a [husky](https://typicode.github.io/husky/) hook
+  (`.husky/pre-commit`) runs `npm test` before every commit, so failing code
+  can't be committed. The hook is installed automatically by the `prepare`
+  script when you run `npm install`.
+- **CI** — the `test` job runs on every push and pull request (see below).
+
+---
+
 ## Releasing
 
 Releases are automated with GitHub Actions (see `.github/workflows/`):
 
 - **`ci.yml`** runs on every push to `main`/`master` and on every pull request.
-  It installs dependencies, builds the plugin, and uploads the resulting `.jpl`
-  as a build artifact — so a broken build is caught before it is tagged.
+  It first runs the unit tests, then (only if they pass) builds the plugin and
+  uploads the resulting `.jpl` as a build artifact — so a failing test or a
+  broken build is caught before it is tagged.
 - **`release.yml`** runs when a version tag (`v*`) is pushed. It builds the
   plugin, checks that the tag matches the version in `src/manifest.json`, and
   publishes a GitHub Release with the `.jpl` and the plugin info `.json`
@@ -179,13 +227,17 @@ use it.*
 src/
   index.ts                    Main plugin process: settings + registration
   common.ts                   Shared constants + helpers (single source of truth)
+  common.test.ts                └ unit tests for common.ts (Jest)
   contentScript.ts            Editor (CodeMirror 6) content script
   style.css                     └ editor link styling (asset of contentScript)
   markdownItContentScript.ts  Viewer (Markdown-It) content script
   markdownItContentScript.css   └ viewer link styling (asset of the above)
   manifest.json               Plugin metadata (id, version, min app version)
 plugin.config.json            Lists extra scripts compiled besides index.ts
+jest.config.js                Jest (ts-jest) test configuration
 webpack.config.js             Build (framework-managed; do not edit)
+.husky/pre-commit             Runs `npm test` before every commit
+.github/workflows/            CI (test + build) and Release automation
 ```
 
 The plugin has **two independent render paths** — the editor (CodeMirror 6) and
